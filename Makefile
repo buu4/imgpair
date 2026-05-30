@@ -1,20 +1,20 @@
 CC := cc
-CFLAGS = -Wall -Wpedantic -g
+CFLAGS = -Wall -Wpedantic -g -std=c11
 LDFLAGS =
 LDLIBS = -lm
 
-SRCS = pngpail.c error.c mapfile.c
+SRCS = imgpair.c main.c error.c mapfile.c
 OBJS = $(SRCS:.c=.o)
 
-all: pngpail
+all: imgpair
 
-pngpail: $(OBJS)
+imgpair: $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) pngpail
+	rm -f $(OBJS) imgpair
 
 .PHONY: all clean

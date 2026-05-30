@@ -1,7 +1,0 @@
-
-First this project named with "pngpail" which means "Png pair", because
-its pair an file data into a PNG with lsb steganography mechanism.
-
-But next time i want to renamed it into "file2img" which can hide a file
-data into JPG, HDR, PNG, BMP, TGA image format. But for now, let make
-it simple, just a png that can read & write hidden data from a .png file
