@@ -4,11 +4,8 @@
 #include "stb_image_write.h"
 #include "error.h"
 
-#include <stdarg.h>
-#include <string.h>
-#include <errno.h>
 #include <stdio.h>
-#include <fcntl.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -23,14 +20,23 @@ static char *filename;
 static char *output;
 
 
+const char _version[] =
+"imgpair 0.1\n"
+"Copyright (C) 2026 Bayu Setiawan. License GPLv2\n"
+"This is free software: you are free to change and redistribute it.\n"
+"There is NO WARRANTY, to the extent permitted by law.\n";
+
 /* XXX - Some options may not work/undefined as a milestone */
 const char _help[] =
 "Usage: %s [options] [file] [-img img]\n"
 "  Pair file content into image file. If no file provided read from image.\n"
+"  If --output is - or its not specified when reading, output to stdout.\n"
 "\n"
 "  -i, --img IMG        Image files to be read/write.\n"
 "  -f, --format FMT     Image format, if not specified read header.\n"
 "  -o, --output FILE    Set output to FILE. if not specified defaults to IMG.\n"
+"                       If read from IMG: output data to FILE\n"
+"  --version            Show program version\n"
 "  --help               Show this message.\n"
 "\n";
 
@@ -59,6 +65,10 @@ static void parse_args (int argc, char **argv)
 
       if (strcmp (argv[i], "--help") == 0) {
         printf (_help, progname);
+        exit (0);
+      }
+      else if (strcmp (argv[i], "--version") == 0) {
+        printf (_version);
         exit (0);
       }
       else if (takechar (argv[i], 1) == 'i' || strcmp (argv[i], "--img") == 0) {
@@ -98,35 +108,6 @@ out:
   exit (1);
 }
 
-static void merge_file_to_pixels (const char *filename, uint8_t *pixels,
-    int w, int h, int ch)
-{
-  struct mapfile *map;
-  int err;
-
-  map = mapfile_open (filename, MAP_PRIVATE, O_RDONLY, PROT_READ, 0);
-
-  if (!map) {
-    report_error ("%s: %s", filename, strerror (errno));
-    goto out;
-  }
-
-  err = imgpair_lsb_write (pixels, w * h * ch, 0, (const uint8_t *)map->ptr, map->sb.st_size);
-
-  if (err == PNGPAIL_FAILURE) {
-    report_error ("%s: %s", filename, imgpair_failure_reason ());
-    goto out;
-  }
-
-  mapfile_close (map);
-  return;
-
-out:
-  mapfile_close (map);
-  stbi_image_free (pixels);
-  exit (1);
-}
-
 int main (int argc, char **argv)
 {
   int w, h, ch;
@@ -144,12 +125,23 @@ int main (int argc, char **argv)
   if (filename == NULL) {
     goto cleanup;
   }
+  else {
+    if (imgp_write_file (filename, pixels, w, h, ch, 0) == PNGPAIL_FAILURE) {
+      report_error ("%s: %s", filename, imgp_failure_reason ());
+      goto out;
+    }
 
-  /* Write to file */
-  merge_file_to_pixels (filename, pixels, w, h, ch);
+    if (stbi_write_png (output, w, h, ch, pixels, w * ch) < 0) {
+      report_error ("can't write to output: %s", stbi_failure_reason ());
+      goto out;
+    }
 
-  if (stbi_write_png (output, w, h, ch, pixels, w * ch) < 0)
-    report_error ("can't write to output: %s", stbi_failure_reason ());
+    goto cleanup;
+
+  out:
+    stbi_image_free (pixels);
+    return 1;
+  }
 
 cleanup:
   stbi_image_free (pixels);
