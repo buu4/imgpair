@@ -13,15 +13,15 @@
 /* This current running program name */
 char *progname = "imgpair";
 
+struct cmdlineopt
+{
+  char *image;
+  char *file;
+  char *output;
+  size_t bit_offset;
+};
 
-/* PNG file to be modified */
-static char *image_target;
-/* File to be stored to image_target */
-static char *filename;
-static char *output;
-/* Offset when writing to image */
-static size_t bit_offset;
-
+static struct cmdlineopt  global_opt;
 
 const char _version[] =
 "imgpair 0.1\n"
@@ -55,10 +55,12 @@ static void parse_args (int argc, char **argv)
 {
   int i;
 
-  image_target = NULL;
-  filename = NULL;
-  output = NULL;
-  bit_offset = 0;
+  global_opt = (struct cmdlineopt) {
+    .image = NULL,
+    .file = NULL,
+    .bit_offset = 0,
+    .output = NULL,
+  };
 
   progname = argv[0];
 
@@ -79,7 +81,7 @@ static void parse_args (int argc, char **argv)
       else if (takechar (argv[i], 1) == 'i' || strcmp (argv[i], "--img") == 0) {
 	if (i + 2 > argc)
 	  break;
-	image_target = argv[++i];
+	global_opt.image = argv[++i];
 	continue;
       }
       else if (takechar (argv[i], 1) == 'o' || strcmp (argv[i], "--output") == 0) {
@@ -87,7 +89,7 @@ static void parse_args (int argc, char **argv)
           report_error ("%s: argument required", argv[i]);
           goto out;
         }
-	output = argv[++i];
+	global_opt.output = argv[++i];
 	continue;
       }
       else if (strcmp (argv[i], "--offset") == 0) {
@@ -115,7 +117,7 @@ static void parse_args (int argc, char **argv)
           exit (1);
         }
 
-	bit_offset = value;
+	global_opt.bit_offset = value;
 	continue;
       }
 
@@ -123,18 +125,18 @@ static void parse_args (int argc, char **argv)
       goto out;
     }
 
-    if (!filename)  /* Allow only 1 file */
-      filename = argv[i];
+    if (!global_opt.file)  /* Allow only 1 file */
+      global_opt.file = argv[i];
   }
 
-  if (image_target == NULL) {
+  if (global_opt.image == NULL) {
     report_error ("no image provided");
     goto out;
   }
 
   /* Default value for options */
-  if (output == NULL)
-    output = image_target;
+  if (global_opt.output == NULL)
+    global_opt.output = global_opt.image;
 
   return;
 
@@ -150,23 +152,24 @@ int main (int argc, char **argv)
 
   parse_args (argc, argv);
 
-  pixels = stbi_load (image_target, &w, &h, &ch, 0);
+  pixels = stbi_load (global_opt.image, &w, &h, &ch, 0);
 
   if (pixels == NULL) {
-    report_error ("%s: %s", image_target, stbi_failure_reason ());
+    report_error ("%s: %s", global_opt.image, stbi_failure_reason ());
     return 1;
   }
 
-  if (filename == NULL) {
+  if (global_opt.file == NULL) {
     goto cleanup;
   }
   else {
-    if (imgp_write_file (filename, pixels, w, h, ch, bit_offset) == PNGPAIL_FAILURE) {
-      report_error ("%s: %s", filename, imgp_failure_reason ());
+    if (imgp_write_file (global_opt.file, pixels, w, h, ch,
+            global_opt.bit_offset) == PNGPAIL_FAILURE) {
+      report_error ("%s: %s", global_opt.file, imgp_failure_reason ());
       goto out;
     }
 
-    if (stbi_write_png (output, w, h, ch, pixels, w * ch) < 0) {
+    if (stbi_write_png (global_opt.output, w, h, ch, pixels, w * ch) < 0) {
       report_error ("can't write to output: %s", stbi_failure_reason ());
       goto out;
     }
