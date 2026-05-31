@@ -44,13 +44,6 @@ const char _help[] =
 "  --help               Show this message.\n"
 "\n";
 
-static int takechar (char *s, int n)
-{
-  if (s[n])
-    return s[n];
-  return 0;
-}
-
 static void parse_args (int argc, char **argv)
 {
   int i;
@@ -188,7 +181,7 @@ int main (int argc, char **argv)
   }
   else {
     if (imgp_write_file (global_opt.file, pixels, w, h, ch,
-            global_opt.bit_offset) == PNGPAIL_FAILURE) {
+            global_opt.bit_offset) == IMGP_FAILURE) {
       report_error ("%s: %s", global_opt.file, imgp_failure_reason ());
       goto out;
     }
