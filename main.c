@@ -7,17 +7,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <errno.h>
 #include <stdlib.h>
 
 /* This current running program name */
 char *progname = "imgpair";
 
+
 /* PNG file to be modified */
 static char *image_target;
-
 /* File to be stored to image_target */
 static char *filename;
 static char *output;
+/* Offset when writing to image */
+static size_t bit_offset;
 
 
 const char _version[] =
@@ -34,8 +37,9 @@ const char _help[] =
 "\n"
 "  -i, --img IMG        Image files to be read/write.\n"
 "  -f, --format FMT     Image format, if not specified read header.\n"
-"  -o, --output FILE    Set output to FILE. if not specified defaults to IMG.\n"
-"                       If read from IMG: output data to FILE\n"
+"  -o, --output FILE    Set output to FILE. if not specified defaults to IMG,\n"
+"                       if read from IMG: output data to FILE.\n"
+"  --offset NUM         Set offset to be start of data written to IMG.\n"
 "  --version            Show program version\n"
 "  --help               Show this message.\n"
 "\n";
@@ -54,6 +58,7 @@ static void parse_args (int argc, char **argv)
   image_target = NULL;
   filename = NULL;
   output = NULL;
+  bit_offset = 0;
 
   progname = argv[0];
 
@@ -78,14 +83,44 @@ static void parse_args (int argc, char **argv)
 	continue;
       }
       else if (takechar (argv[i], 1) == 'o' || strcmp (argv[i], "--output") == 0) {
-	if (i + 2 > argc)
-	  break;
+	if (i + 2 > argc) {
+          report_error ("%s: argument required", argv[i]);
+          goto out;
+        }
 	output = argv[++i];
+	continue;
+      }
+      else if (strcmp (argv[i], "--offset") == 0) {
+        char *endptr;
+        long value;
+
+	if (i + 2 > argc) {
+          report_error ("%s: argument required", argv[i]);
+          goto out;
+        }
+
+        errno = 0;
+        value = strtol(argv[++i], &endptr, 0);
+
+        if (errno != 0) {
+          report_error (strerror (errno));
+          exit (1);
+        }
+        else if (endptr == argv[i]) {
+          report_error ("%s: no value provided", argv[i - 1]);
+          continue;
+        }
+        else if (value < 0) {
+          report_error ("%s: value can't be negative", argv[i - 1]);
+          exit (1);
+        }
+
+	bit_offset = value;
 	continue;
       }
 
       report_error ("unknown options: %s", argv[i]);
-      exit (1);
+      goto out;
     }
 
     if (!filename)  /* Allow only 1 file */
@@ -126,7 +161,7 @@ int main (int argc, char **argv)
     goto cleanup;
   }
   else {
-    if (imgp_write_file (filename, pixels, w, h, ch, 0) == PNGPAIL_FAILURE) {
+    if (imgp_write_file (filename, pixels, w, h, ch, bit_offset) == PNGPAIL_FAILURE) {
       report_error ("%s: %s", filename, imgp_failure_reason ());
       goto out;
     }
