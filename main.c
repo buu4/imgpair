@@ -136,7 +136,31 @@ static void parse_args (int argc, char **argv)
 
   /* Default value for options */
   if (global_opt.output == NULL)
-    global_opt.output = global_opt.image;
+    {
+      global_opt.output = global_opt.image;
+
+      char c;
+      char y = '\0';
+      printf ("Write output to '%s'?: ", global_opt.output);
+      while ((c = fgetc (stdin)) != EOF) {
+        if (c == '\n') {
+          if (y == 'y' ||  y == 'Y')
+            break;
+          else {
+	    printf ("no.\n");
+            exit (1);
+          }
+        }
+        else {
+          y = c;
+        }
+      }
+
+      if (c == EOF) {
+        printf ("no.\n");
+        exit (1);
+      }
+    }
 
   return;
 
