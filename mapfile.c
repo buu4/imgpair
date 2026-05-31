@@ -14,6 +14,9 @@ struct mapfile *mapfile_open (const char *pathname, int mapflags, int fdflags,
 
   map->fd = open (pathname, fdflags);
 
+  if (map->fd == -1)
+    goto out;
+
   if (fstat (map->fd, &map->sb) == -1)
     goto out;
 
@@ -25,13 +28,15 @@ struct mapfile *mapfile_open (const char *pathname, int mapflags, int fdflags,
   return map;
 
 out:
-  mapfile_close (map);
-  return map;
+  if (map->fd != -1)
+    close (map->fd);
+  free (map);
+  return NULL;
 }
 
 void mapfile_close (struct mapfile *map)
 {
-  if (map->fd > 0)
+  if (map->fd != -1)
     close (map->fd);
   if (map->ptr != MAP_FAILED)
     munmap (map->ptr, map->sb.st_size);
