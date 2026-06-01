@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <stdlib.h>
 
@@ -71,13 +72,15 @@ static void parse_args (int argc, char **argv)
         printf (_version);
         exit (0);
       }
-      else if (takechar (argv[i], 1) == 'i' || strcmp (argv[i], "--img") == 0) {
+      else if ((argv[i][1] == 'i' && argv[i][2] == '\0') ||
+                  strcmp (argv[i], "--img") == 0) {
 	if (i + 2 > argc)
 	  break;
 	global_opt.image = argv[++i];
 	continue;
       }
-      else if (takechar (argv[i], 1) == 'o' || strcmp (argv[i], "--output") == 0) {
+      else if ((argv[i][1] == 'o' && argv[i][2] == '\0') ||
+                   strcmp (argv[i], "--output") == 0) {
 	if (i + 2 > argc) {
           report_error ("%s: argument required", argv[i]);
           goto out;
@@ -130,6 +133,12 @@ static void parse_args (int argc, char **argv)
   /* Default value for options */
   if (global_opt.output == NULL)
     {
+      /* Output to stdout if this read from image */
+      if (global_opt.file == NULL) {
+        global_opt.output = "-";
+        return;
+      }
+
       global_opt.output = global_opt.image;
 
       char c;
@@ -176,9 +185,42 @@ int main (int argc, char **argv)
     return 1;
   }
 
+  /* READ */
   if (global_opt.file == NULL) {
+    struct mapfile *map;
+    int fd;
+
+    if (global_opt.output == NULL || (global_opt.output[0] == '-' &&
+            global_opt.output[1] == '\0')) {
+      fd = 1;
+      map = NULL;
+    }
+    else {
+      map = mapfile_open (global_opt.output, MAP_PRIVATE, O_RDONLY,
+                PROT_READ, 0);
+
+      if (!map) {
+        report_error ("%s: %s", global_opt.output, strerror (errno));
+        goto out;
+      }
+
+      fd = map->fd;
+    }
+
+    if (imgp_decode_pixels (fd, pixels, w, h, ch,
+            global_opt.bit_offset, 1024) == IMGP_FAILURE) {
+      report_error ("%s: %s", global_opt.file, imgp_failure_reason ());
+      mapfile_close (map);
+      goto out;
+    }
+
+    if (map)
+      mapfile_close (map);
+    if (fd == 1)
+      putchar ('\n');
     goto cleanup;
   }
+  /* WRITE */
   else {
     if (imgp_write_file (global_opt.file, pixels, w, h, ch,
             global_opt.bit_offset) == IMGP_FAILURE) {
@@ -192,11 +234,11 @@ int main (int argc, char **argv)
     }
 
     goto cleanup;
-
-  out:
-    stbi_image_free (pixels);
-    return 1;
   }
+
+out:
+  stbi_image_free (pixels);
+  return 1;
 
 cleanup:
   stbi_image_free (pixels);

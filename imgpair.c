@@ -9,11 +9,14 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <unistd.h>
 #include <stdarg.h>
+
+#define CHUNK_THRESHOLD    1024
 
 static const char *_imgp_error_reason = NULL;
 
-static IMGPSTATUS imgp_errpuc (const char *reason)
+static IMGPVALUE imgp_errpuc (const char *reason)
 {
   _imgp_error_reason = reason;
   return IMGP_FAILURE;
@@ -24,49 +27,77 @@ const char *imgp_failure_reason (void)
   return _imgp_error_reason;
 }
 
-/* write data_len byte from data to pixel lsb starting from bit_offset */
-IMGPSTATUS imgp_lsb_write (uint8_t *pixels, size_t pixel_size, size_t bit_offset,
-    const uint8_t *data, size_t data_len)
+IMGPVALUE imgp_write_lsb (uint8_t *pixels, int w, int h, int ch,
+    size_t bit_offset, const uint8_t *data, size_t data_len)
 {
   register size_t i;
   register int b;
+  register size_t bp;
+  size_t pixel_size = w * h * ch;
 
   for (i = 0; i < data_len; i++) {
     for (b = 7; b >= 0; b--) {
-      register int bp = bit_offset + (i * 8) + (7 - b);
+      bp = 0;
+      bp = bit_offset + (i * 8) + (7 - b);
       if (bp >= pixel_size)
 	return imgp_errpuc ("write overflow");
       pixels[bp] = (pixels[bp] & 0xfe) | (data[i] >> b & 1u);
     }
   }
 
-  return IMGP_SUCCESS;
+  return bp;
 }
 
-/* read steganed pixels starting from bit_offset and store it into data_out */
-IMGPSTATUS imgp_lsb_read (uint8_t *pixels, size_t pixel_size, size_t bit_offset,
-    uint8_t *data_out, size_t data_len)
+IMGPVALUE imgp_read_lsb (uint8_t *pixels, int w, int h, int ch,
+    size_t bit_offset, uint8_t *data_out, size_t data_len)
 {
   register size_t i;
   register int b;
+  register size_t bp;
+  size_t pixel_size = w * h * ch;
 
   for (i = 0; i < data_len; i++) {
     for (b = 7; b >= 0; b--) {
-      register int bp = bit_offset + (i * 8) + (7 - b);
+      bp = 0;
+      bp = bit_offset + (i * 8) + (7 - b);
       if (bp >= pixel_size)
 	return imgp_errpuc ("read overflow");
       data_out[i] |= ((pixels[bp] & 1u) << b);
-
     }
   }
+
+  return bp;
+}
+
+IMGPVALUE imgp_decode_pixels (int fd, uint8_t *pixels, int w, int h, int ch,
+    size_t offset, size_t data_len)
+{
+  uint8_t *data;
+  data = (uint8_t *) malloc (data_len);
+
+  while (1) {
+    register int chunk;
+    memset (data, 0, data_len);
+    chunk = (data_len - offset > CHUNK_THRESHOLD) ? CHUNK_THRESHOLD - offset
+            : data_len - offset;
+    if (chunk <= 0)
+      break;
+    if (imgp_read_lsb (pixels, w, h, ch, offset, data, chunk) == IMGP_FAILURE)
+      return IMGP_FAILURE;
+
+    write (fd, data, chunk);
+    offset += chunk;
+  }
+  free (data);
 
   return IMGP_SUCCESS;
 }
 
-IMGPSTATUS imgp_write_file (const char *pathname, uint8_t *pixels, int w,
+IMGPVALUE imgp_write_file (const char *pathname, uint8_t *pixels, int w,
     int h, int ch, size_t offset)
 {
   struct mapfile *map;
+  IMGPVALUE ret;
 
   map = mapfile_open (pathname, MAP_PRIVATE, O_RDONLY, PROT_READ, 0);
 
@@ -75,14 +106,13 @@ IMGPSTATUS imgp_write_file (const char *pathname, uint8_t *pixels, int w,
     goto out;
   }
 
-  if (imgp_lsb_write (pixels, w * h * ch, offset, (const uint8_t *)map->ptr,
-	    map->sb.st_size) == IMGP_FAILURE) {
-    imgp_errpuc (imgp_failure_reason ());
+  if ((ret = imgp_write_lsb (pixels, w, h, ch, offset, (const uint8_t *)map->ptr,
+	    map->sb.st_size)) == IMGP_FAILURE) {
     goto out;
   }
 
   mapfile_close (map);
-  return IMGP_SUCCESS;
+  return ret;
 
 out:
   if (map)
